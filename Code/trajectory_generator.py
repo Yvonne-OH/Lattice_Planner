@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import util
+import cartesian_frenet_conversion
 
 class TrajectorySolver:
     def solve_lateral_trajectory_frenet(self, delta, initial_state, end_state, step=0.1):
@@ -61,6 +63,72 @@ class TrajectorySolver:
             derivative_coeffs = np.polyder(derivative_coeffs)
         longitudinal_positions = np.polyval(derivative_coeffs, time_points)
         return time_points, longitudinal_positions
+
+def Trajectory_Cluster_Generation(middleLine, linewidth, start_point, vertical_step, initial_condition, end_condition):
+    """
+    Compute and convert trajectory from Frenet to Cartesian coordinates.
+
+    Parameters:
+    - middleLine: Spline curve (center line)
+    - linewidth: Width of the lane
+    - start_point: Starting point (x, y)
+    - vertical_step: Vertical step for trajectory planning
+    - initial_condition: Initial conditions [v, a, theta, kappa]
+    - end_condition: End conditions [d_offset, v_end]
+
+    Returns:
+    - xy_trajectory: List of converted (x, y) coordinates
+    """
+    # Find the reference point in the Frenet coordinate system based on the matched point
+    rx, ry, rtheta, rkappa, rdkappa, rs = util.find_reference_point(middleLine, start_point, sample_num=200, En_test=False)
+
+    # Extract initial and end conditions
+    v, a, theta, kappa = initial_condition
+    d_offset, v_end = end_condition
+
+    # Compute the vehicle's initial coordinates in the Frenet frame
+    x, y = start_point
+    s, s_dot, s_double_dot, d, d_prime, d_double_prime = cartesian_frenet_conversion.CartesianFrenetConverter.cartesian_to_frenet(
+        rs, rx, ry, rtheta, rkappa, rdkappa, x, y, v, a, theta, kappa)
+
+    # Initialize the trajectory planner
+    Trajectory_planner = TrajectorySolver()
+
+    # Define initial lateral and longitudinal conditions in the Frenet frame
+    l0 = [d, 0, 0]    # Initial lateral displacement in Frenet frame
+    l1 = [d + d_offset, 0, 0]  # Final lateral displacement in Frenet frame
+
+    s0 = [s, s_dot, s_double_dot] # Initial longitudinal displacement in Frenet frame
+    s1 = [v_end, 0]               # Final longitudinal velocity (end point)
+
+    # Solve for the lateral and longitudinal trajectory in the Frenet frame
+    t, l_plan = Trajectory_planner.solve_lateral_trajectory_frenet(vertical_step, l0, l1)
+    t, s_plan = Trajectory_planner.solve_longitudinal_trajectory_frenet(vertical_step, s0, s1, derivative_order=0)
+
+    # Combine the time, lateral, and longitudinal plans into a single array
+    Trajectory_plan_frenet = np.column_stack((t, s_plan, l_plan))
+
+    xy_trajectory = []
+
+    for row in Trajectory_plan_frenet:
+        time_step = row[0]
+        s_value = row[1]
+        l_value = row[2]
+        
+        # Calculate the reference position and yaw angle at the given s value
+        rs = s_value
+        rx, ry = middleLine.calc_position(rs)
+        rtheta = middleLine.calc_yaw(rs)
+        
+        # Convert the Frenet coordinates to Cartesian coordinates
+        x, y, theta, kappa, v, a = cartesian_frenet_conversion.CartesianFrenetConverter.frenet_to_cartesian(
+            rs, rx, ry, rtheta, rkappa, rdkappa, [s_value, s_dot, s_double_dot], [l_value, d_prime, d_double_prime])
+        
+        # Append the converted coordinates to the trajectory list
+        xy_trajectory.append((x, y))
+
+    return xy_trajectory
+
 
 # Test and plot the results using the class
 if __name__ == "__main__":

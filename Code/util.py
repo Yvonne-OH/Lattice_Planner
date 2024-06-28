@@ -9,6 +9,48 @@ import numpy as np
 import matplotlib.pyplot as plt
 import Cubic_Spline
 
+def plot_trajectories(xy_trajectories, middleLine, line1, line2, Adaptive_zoom=False):
+    """
+    Plot multiple trajectories in Cartesian coordinates.
+
+    Parameters:
+    - xy_trajectories: List of lists of (x, y) coordinates
+    - middleLine: Spline curve (center line)
+    - line1: Upper boundary spline curve
+    - line2: Lower boundary spline curve
+    - xlim: Tuple (xmin, xmax) to limit x-axis for zoomed in view (optional)
+    - ylim: Tuple (ymin, ymax) to limit y-axis for zoomed in view (optional)
+    """
+    plt.figure(figsize=(10, 5))
+    s_values = np.linspace(0, max(middleLine.s), 300)
+    x1, y1 = zip(*[middleLine.calc_position(s) for s in s_values])
+    x_up, y_up = zip(*[line1.calc_position(s) for s in s_values])
+    x_down, y_down = zip(*[line2.calc_position(s) for s in s_values])
+    plt.plot(x1, y1, label='Middle Road', color='red', linestyle='--')
+    plt.plot(x_up, y_up, label='Upper Road', color='black')  # Draw upper road boundary
+    plt.plot(x_down, y_down, label='Lower Road', color='black')  # Draw lower road boundary
+
+    for i, xy_trajectory in enumerate(xy_trajectories):
+        x_traj, y_traj = zip(*xy_trajectory)
+        plt.plot(x_traj, y_traj, label=f'Planned Trajectory {i+1}')
+
+
+    plt.title('Trajectory Conversion from Frenet to Cartesian Coordinates')
+    plt.xlabel('X coordinate')
+    plt.ylabel('Y coordinate')
+    plt.legend()
+    plt.grid(True)
+    #plt.axis('equal')
+
+    # Apply x and y limits if provided
+    if Adaptive_zoom:
+        xlim = [min(x_traj)-0.5*(max(x_traj)-min(x_traj)),max(x_traj)+0.5*(max(x_traj)-min(x_traj))]
+        ylim = [min(y_traj)-0.5*(max(y_traj)-min(y_traj)),max(y_traj)+0.5*(max(y_traj)-min(y_traj))]
+        plt.xlim(xlim)
+        plt.ylim(ylim)
+
+    plt.show()
+
 def find_reference_point(spline, given_point, sample_num=35,En_test=False):
     
     """
