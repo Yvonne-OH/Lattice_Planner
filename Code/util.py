@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import Cubic_Spline
 
-def plot_trajectories(xy_trajectories, middleLine, line1, line2, Adaptive_zoom=False):
+def plot_trajectories(xy_trajectories, middleLine, line1, line2, obstacles, costs, expansion_factor=2, Adaptive_zoom=False):
     """
     Plot multiple trajectories in Cartesian coordinates.
 
@@ -18,22 +18,36 @@ def plot_trajectories(xy_trajectories, middleLine, line1, line2, Adaptive_zoom=F
     - middleLine: Spline curve (center line)
     - line1: Upper boundary spline curve
     - line2: Lower boundary spline curve
-    - xlim: Tuple (xmin, xmax) to limit x-axis for zoomed in view (optional)
-    - ylim: Tuple (ymin, ymax) to limit y-axis for zoomed in view (optional)
+    - obstacles: List of (x, y, r) tuples representing obstacles
+    - costs: List of costs for each trajectory
+    - expansion_factor: Factor by which to expand the obstacles
+    - Adaptive_zoom: Whether to adaptively zoom the plot
     """
     plt.figure(figsize=(10, 5))
+    ax = plt.gca()
     s_values = np.linspace(0, max(middleLine.s), 300)
     x1, y1 = zip(*[middleLine.calc_position(s) for s in s_values])
     x_up, y_up = zip(*[line1.calc_position(s) for s in s_values])
     x_down, y_down = zip(*[line2.calc_position(s) for s in s_values])
-    plt.plot(x1, y1, label='Middle Road', color='red', linestyle='--')
-    plt.plot(x_up, y_up, label='Upper Road', color='black')  # Draw upper road boundary
-    plt.plot(x_down, y_down, label='Lower Road', color='black')  # Draw lower road boundary
+    plt.plot(x1, y1, label='Middle Road', color='blue', linestyle='--')
+    plt.plot(x_up, y_up, label='Upper Road', color='black')
+    plt.plot(x_down, y_down, label='Lower Road', color='black')
 
+    min_cost = min(costs)
     for i, xy_trajectory in enumerate(xy_trajectories):
         x_traj, y_traj = zip(*xy_trajectory)
-        plt.plot(x_traj, y_traj, label=f'Planned Trajectory {i+1}')
+        if costs[i] == float('inf'):
+            plt.plot(x_traj, y_traj, label=f'Trajectory {i+1} (collision)', color='red', linestyle='-', alpha=0.3)
+        elif costs[i] == min_cost:
+            plt.plot(x_traj, y_traj, label=f'Optimal Trajectory {i+1}', color='green', linestyle='-')
+        else:
+            plt.plot(x_traj, y_traj, label=f'Trajectory {i+1}', color='green', linestyle='--')
 
+    for (x, y, r) in obstacles:
+        circle = plt.Circle((x, y), r, color='r', fill=False, linestyle='dashed', label='Obstacle')
+        expanded_circle = plt.Circle((x, y), r * expansion_factor, color='b', fill=False, linestyle='dotted', label='Expanded Obstacle')
+        ax.add_patch(circle)
+        ax.add_patch(expanded_circle)
 
     plt.title('Trajectory Conversion from Frenet to Cartesian Coordinates')
     plt.xlabel('X coordinate')
@@ -42,17 +56,17 @@ def plot_trajectories(xy_trajectories, middleLine, line1, line2, Adaptive_zoom=F
     plt.grid(True)
     #plt.axis('equal')
 
-    # Apply x and y limits if provided
     if Adaptive_zoom:
-        xlim = [min(x_traj)-0.5*(max(x_traj)-min(x_traj)),max(x_traj)+0.5*(max(x_traj)-min(x_traj))]
-        ylim = [min(y_traj)-0.5*(max(y_traj)-min(y_traj)),max(y_traj)+0.5*(max(y_traj)-min(y_traj))]
+        x_all = [x for xy_trajectory in xy_trajectories for x, y in xy_trajectory]
+        y_all = [y for xy_trajectory in xy_trajectories for x, y in xy_trajectory]
+        xlim = [min(x_all) - 0.5 * (max(x_all) - min(x_all)), max(x_all) + 0.5 * (max(x_all) - min(x_all))]
+        ylim = [min(y_all) - 0.5 * (max(y_all) - min(y_all)), max(y_all) + 0.5 * (max(y_all) - min(y_all))]
         plt.xlim(xlim)
         plt.ylim(ylim)
 
     plt.show()
 
-def find_reference_point(spline, given_point, sample_num=35,En_test=False):
-    
+def find_reference_point(spline, given_point, sample_num=35, En_simple=True, En_test=False):
     """
     Calculate the reference point on a cubic spline that is closest to a given point.
 
@@ -90,7 +104,7 @@ def find_reference_point(spline, given_point, sample_num=35,En_test=False):
         theta = spline.calc_yaw(s)
         k = spline.calc_curvature(s)
         k_prime = spline.calc_curvature_derivative(s)
-        points.append(np.array((px, py, theta, k, k_prime,s)))
+        points.append(np.array((px, py, theta, k, k_prime, s)))
         distance = np.sqrt((px - given_point[0])**2 + (py - given_point[1])**2)
         distances.append(distance)
     
@@ -104,6 +118,7 @@ def find_reference_point(spline, given_point, sample_num=35,En_test=False):
         raise ValueError("The closest point is the starting point of the spline.")
     if min_index >= sample_num - 4:
         raise ValueError("The closest point is the end point of the spline.")
+
 
     # Get indices for linear interpolation
     index_R0 = min_index - 1
@@ -138,24 +153,24 @@ def find_reference_point(spline, given_point, sample_num=35,En_test=False):
     u = np.cos(theta)  # X component of direction vectors
     v = np.sin(theta)  # Y component of direction vectors
 
-    if (En_test):
+    if En_test:
         # Set up plot
         fig, ax = plt.subplots()
         ax.set_aspect('equal', 'box')
-        ax.plot(px, py,label="Reference_line")
-        ax.plot(x_proj,y_proj,'o', markerfacecolor='b', markeredgecolor='b', markersize=5,label="Proj_point")
-        ax.plot([x0,given_point[0]], [y0,given_point[1]], marker='.',color='c')
-        ax.plot([x1,given_point[0]], [y1,given_point[1]], marker='.',color='c')
-        ax.plot(px, py,'o', markerfacecolor='none', markeredgecolor='k', markersize=2)
-        ax.quiver(px, py, u, v, scale=25, color='m',label="Tangent vector")
-        ax.plot([given_point[0],x_proj],[given_point[1],y_proj],color='k',label='Perpendicular line')
-        ax.plot([x0,x1],[y0,y1],color='r',label='Auxiliary line')
-        ax.plot(given_point[0],given_point[1],'o', markerfacecolor='k', markeredgecolor='k', markersize=5,label="Path_point")
+        ax.plot(px, py, label="Reference_line")
+        ax.plot(x_proj, y_proj, 'o', markerfacecolor='b', markeredgecolor='b', markersize=5, label="Proj_point")
+        ax.plot([x0, given_point[0]], [y0, given_point[1]], marker='.', color='c')
+        ax.plot([x1, given_point[0]], [y1, given_point[1]], marker='.', color='c')
+        ax.plot(px, py, 'o', markerfacecolor='none', markeredgecolor='k', markersize=2)
+        ax.quiver(px, py, u, v, scale=25, color='m', label="Tangent vector")
+        ax.plot([given_point[0], x_proj], [given_point[1], y_proj], color='k', label='Perpendicular line')
+        ax.plot([x0, x1], [y0, y1], color='r', label='Auxiliary line')
+        ax.plot(given_point[0], given_point[1], 'o', markerfacecolor='k', markeredgecolor='k', markersize=5, label="Path_point")
         ax.set_title('Finding the Perpendicular Reference Point on a Curve')
         plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
         
-        dot_product = np.dot(np.array([given_point[0]-x_proj, given_point[1]-y_proj]), v1)
-        norm_u = np.linalg.norm(np.array([given_point[0]-x_proj, given_point[1]-y_proj]))
+        dot_product = np.dot(np.array([given_point[0] - x_proj, given_point[1] - y_proj]), v1)
+        norm_u = np.linalg.norm(np.array([given_point[0] - x_proj, given_point[1] - y_proj]))
         norm_v = np.linalg.norm(v1)
         cos_theta = dot_product / (norm_u * norm_v)
         theta = np.degrees(np.arccos(cos_theta))
@@ -163,9 +178,11 @@ def find_reference_point(spline, given_point, sample_num=35,En_test=False):
         
         plt.grid(True)
         plt.show()
+        
+    dis=np.sqrt((xr - x_proj)**2 + (yr - y_proj)**2)
 
     # Return calculated values
-    return (x_proj, y_proj, theta_proj, k_proj, dk_proj,s_proj)
+    return (x_proj, y_proj, theta_proj, k_proj, dk_proj, s_proj, 0)
         
 
 if __name__=='__main__':
@@ -174,4 +191,4 @@ if __name__=='__main__':
     y = np.array([0.0, 0.0, 0.8, 1.2, 0.6, 0.0])
     middleLine = Cubic_Spline.Spline2D(x, y)  # x and y should be defined outside this function
     given_point = (0.9, 2.6)
-    find_reference_point(middleLine, given_point,En_test=True)
+    find_reference_point(middleLine, given_point,En_simple=False,En_test=True)

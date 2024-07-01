@@ -80,7 +80,7 @@ def Trajectory_Cluster_Generation(middleLine, linewidth, start_point, vertical_s
     - xy_trajectory: List of converted (x, y) coordinates
     """
     # Find the reference point in the Frenet coordinate system based on the matched point
-    rx, ry, rtheta, rkappa, rdkappa, rs = util.find_reference_point(middleLine, start_point, sample_num=200, En_test=False)
+    rx, ry, rtheta, rkappa, rdkappa, rs, distance = util.find_reference_point(middleLine, start_point, sample_num=200, En_test=False)
 
     # Extract initial and end conditions
     v, a, theta, kappa = initial_condition
@@ -93,10 +93,10 @@ def Trajectory_Cluster_Generation(middleLine, linewidth, start_point, vertical_s
 
     # Initialize the trajectory planner
     Trajectory_planner = TrajectorySolver()
-
+    
     # Define initial lateral and longitudinal conditions in the Frenet frame
     l0 = [d, 0, 0]    # Initial lateral displacement in Frenet frame
-    l1 = [d + d_offset, 0, 0]  # Final lateral displacement in Frenet frame
+    l1 = [d + d_offset - distance, 0, 0]  # Final lateral displacement in Frenet frame
 
     s0 = [s, s_dot, s_double_dot] # Initial longitudinal displacement in Frenet frame
     s1 = [v_end, 0]               # Final longitudinal velocity (end point)

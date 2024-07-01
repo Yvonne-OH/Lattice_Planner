@@ -12,6 +12,7 @@ TODO List:
 2. Vehicle dynamic model
 3. Vehicle Controller
 
-
+![Project Video](Gallery/video.gif)
 ![Project Image](Gallery/Figure00.png)
+
 
